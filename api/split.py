@@ -1,7 +1,10 @@
-import json
+from flask import Flask, request, jsonify
 import asyncio
 import httpx
+import json
 import random
+
+app = Flask(__name__)
 
 CONCURRENCY = 30
 TIMEOUT = 10
@@ -35,6 +38,75 @@ async def check_uid(uid, cookie, original_line, client, sem):
         try:
             r = await client.get(
                 "https://www.facebook.com/",
+                headers=headers,
+                timeout=TIMEOUT,
+                follow_redirects=True
+            )
+
+            final_url = str(r.url).lower()
+
+            if "confirmemail.php" in final_url:
+                return {
+                    "uid": uid,
+                    "status": "nv",
+                    "line": original_line
+                }
+            else:
+                return {
+                    "uid": uid,
+                    "status": "ok",
+                    "line": original_line
+                }
+
+        except:
+            return {
+                "uid": uid,
+                "status": "error",
+                "line": original_line
+            }
+
+
+async def run_checker(lines):
+    sem = asyncio.Semaphore(CONCURRENCY)
+
+    entries = []
+
+    for line in lines:
+        parts = line.split("|", 2)
+
+        if len(parts) >= 3:
+            uid, pw, cookies = parts
+        elif len(parts) == 2:
+            uid, cookies = parts
+        else:
+            continue
+
+        cookie = parse_cookie(cookies)
+        entries.append((uid, cookie, line))
+
+    async with httpx.AsyncClient() as client:
+        tasks = [
+            check_uid(uid, cookie, line, client, sem)
+            for uid, cookie, line in entries
+        ]
+
+        return await asyncio.gather(*tasks)
+
+
+@app.route("/api/split", methods=["POST"])
+def split():
+    data = request.json
+    raw = data.get("data", "")
+
+    lines = [
+        x.strip()
+        for x in raw.split("\n")
+        if x.strip()
+    ]
+
+    results = asyncio.run(run_checker(lines))
+
+    return jsonify(results)                "https://www.facebook.com/",
                 headers=headers,
                 timeout=TIMEOUT,
                 follow_redirects=True
