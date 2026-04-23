@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/split.py": {
+      "runtime": "python3.13"
+    }
+  }
+}
